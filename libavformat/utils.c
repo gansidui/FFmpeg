@@ -2084,8 +2084,8 @@ void ff_configure_buffers_for_index(AVFormatContext *s, int64_t time_tolerance)
 
     pos_delta *= 2;
     /* XXX This could be adjusted depending on protocol*/
-    if (s->pb->buffer_size < pos_delta && pos_delta < (1<<24)) {
-        av_log(s, AV_LOG_VERBOSE, "Reconfiguring buffers to size %"PRId64"\n", pos_delta);
+    if (s->pb->buffer_size < pos_delta && pos_delta < (1<<26)) {
+        av_log(s, AV_LOG_INFO, "Reconfiguring buffers to size %"PRId64"\n", pos_delta);
         ffio_set_buf_size(s->pb, pos_delta);
         s->pb->short_seek_threshold = FFMAX(s->pb->short_seek_threshold, pos_delta/2);
     }
