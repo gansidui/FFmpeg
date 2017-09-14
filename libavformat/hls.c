@@ -116,6 +116,9 @@ struct playlist {
     struct segment **segments;
     int needed, cur_needed;
     int cur_seq_no;
+    int previous_seq_no;
+    int previous_pts;
+    int previous_dts;
     int64_t cur_seg_offset;
     int64_t last_load_time;
 
@@ -2068,8 +2071,32 @@ static int hls_read_packet(AVFormatContext *s, AVPacket *pkt)
                                            AV_TIME_BASE_Q,
                                            s->streams[pkt->stream_index]->time_base);
                 }
-                if (pkt->dts != AV_NOPTS_VALUE && pkt->dts + pred < max_ts) pkt->dts += pred;
-                if (pkt->pts != AV_NOPTS_VALUE && pkt->pts + pred < max_ts) pkt->pts += pred;
+                int pts_used_pred = 0;
+                int dts_used_pred = 0;
+                if (pkt->dts != AV_NOPTS_VALUE && pkt->dts + pred < max_ts) {pkt->dts += pred; dts_used_pred = 1;}
+                if (pkt->pts != AV_NOPTS_VALUE && pkt->pts + pred < max_ts) {pkt->pts += pred; pts_used_pred = 1;}
+                if (pls->previous_seq_no > pls->start_seq_no && seq_no - pls->previous_seq_no == 1) {
+                    struct segment *pseg = pls->segments[seq_no-1];
+                    int64_t ppred = av_rescale_q(pseg->previous_duration,
+                                                 AV_TIME_BASE_Q,
+                                                 s->streams[pkt->stream_index]->time_base);
+                    int64_t pduration = pred - ppred;
+                    if (pts_used_pred && (pkt->pts - pls->previous_pts >= pduration)) {
+                        pkt->pts = pkt->pts-pduration;
+                        pts_used_pred = 0;
+                    }
+                    // TODO: dts can be backwards
+                    if (dts_used_pred && (pkt->dts - pls->previous_dts >= pduration)) {
+                        pkt->dts = pkt->dts-pduration;
+                        dts_used_pred = 0;
+                    }
+                    if (pts_used_pred || dts_used_pred)
+                        pls->previous_seq_no = seq_no;
+                } else {
+                    pls->previous_seq_no = seq_no;
+                }
+                pls->previous_dts = pkt->dts;
+                pls->previous_pts = pkt->pts;
             }
         }
         return 0;
