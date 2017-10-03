@@ -210,6 +210,7 @@ typedef struct HLSContext {
     char *http_proxy;                    ///< holds the address of the HTTP proxy server
     AVDictionary *avio_opts;
     int strict_std_compliance;
+    char *scheme_proxy;
 } HLSContext;
 
 static int read_chomp_line(AVIOContext *s, char *buf, int maxlen)
@@ -218,6 +219,14 @@ static int read_chomp_line(AVIOContext *s, char *buf, int maxlen)
     while (len > 0 && av_isspace(buf[len - 1]))
         buf[--len] = '\0';
     return len;
+}
+
+static int read_chomp_line_and_append_m3u8(AVIOContext *s, char *buf, int maxlen, AVDictionary **pm) {
+    int ret = read_chomp_line(s, buf, maxlen);
+    char tbuf[MAX_URL_SIZE];
+    sprintf(tbuf, "%s\n", buf);
+    av_dict_set(pm, "m3u8", tbuf, AV_DICT_APPEND);
+    return ret;
 }
 
 static void free_segment_list(struct playlist *pls)
@@ -601,6 +610,12 @@ static void update_options(char **dest, const char *name, void *src)
         av_freep(dest);
 }
 
+static char *insert_scheme(char *dest, const char *scheme) {
+    char tmp_str[MAX_URL_SIZE] = {0};
+    sprintf(tmp_str, "%s:%s", scheme, dest);
+    return strcpy(dest, tmp_str);
+}
+
 static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
                     AVDictionary *opts, AVDictionary *opts2, int *is_http)
 {
@@ -698,7 +713,7 @@ static int parse_playlist(HLSContext *c, const char *url,
     if (av_opt_get(in, "location", AV_OPT_SEARCH_CHILDREN, &new_url) >= 0)
         url = new_url;
 
-    read_chomp_line(in, line, sizeof(line));
+    read_chomp_line_and_append_m3u8(in, line, sizeof(line), &c->ctx->metadata);
     if (strcmp(line, "#EXTM3U")) {
         ret = AVERROR_INVALIDDATA;
         goto fail;
@@ -710,7 +725,7 @@ static int parse_playlist(HLSContext *c, const char *url,
         pls->type = PLS_TYPE_UNSPECIFIED;
     }
     while (!avio_feof(in)) {
-        read_chomp_line(in, line, sizeof(line));
+        read_chomp_line_and_append_m3u8(in, line, sizeof(line), &c->ctx->metadata);
         if (av_strstart(line, "#EXT-X-STREAM-INF:", &ptr)) {
             is_variant = 1;
             memset(&variant_info, 0, sizeof(variant_info));
@@ -779,6 +794,8 @@ static int parse_playlist(HLSContext *c, const char *url,
             ptr = strchr(ptr, '@');
             if (ptr)
                 seg_offset = strtoll(ptr+1, NULL, 10);
+        } else if (av_strstart(line, "#LOCATION:", &ptr)) {
+            url = strdup(ptr);
         } else if (av_strstart(line, "#", NULL)) {
             continue;
         } else if (line[0]) {
@@ -819,6 +836,9 @@ static int parse_playlist(HLSContext *c, const char *url,
 
                 if (key_type != KEY_NONE) {
                     ff_make_absolute_url(tmp_str, sizeof(tmp_str), url, key);
+                    if (c->scheme_proxy) {
+                        insert_scheme(tmp_str, c->scheme_proxy);
+                    }
                     seg->key = av_strdup(tmp_str);
                     if (!seg->key) {
                         av_free(seg);
@@ -830,6 +850,9 @@ static int parse_playlist(HLSContext *c, const char *url,
                 }
 
                 ff_make_absolute_url(tmp_str, sizeof(tmp_str), url, line);
+                if (c->scheme_proxy) {
+                    insert_scheme(&tmp_str, c->scheme_proxy);
+                }
                 seg->url = av_strdup(tmp_str);
                 if (!seg->url) {
                     av_free(seg->key);
@@ -2205,6 +2228,7 @@ static int hls_probe(AVProbeData *p)
 static const AVOption hls_options[] = {
     {"live_start_index", "segment index to start live streams at (negative values are from the end)",
         OFFSET(live_start_index), AV_OPT_TYPE_INT, {.i64 = -3}, INT_MIN, INT_MAX, FLAGS},
+    {"scheme_proxy", "scheme for load ts url", OFFSET(scheme_proxy), AV_OPT_TYPE_STRING},
     {NULL}
 };
 
@@ -2218,6 +2242,7 @@ static const AVClass hls_class = {
 AVInputFormat ff_hls_demuxer = {
     .name           = "hls,applehttp",
     .long_name      = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
+    .extensions     = "m3u8",
     .priv_class     = &hls_class,
     .priv_data_size = sizeof(HLSContext),
     .read_probe     = hls_probe,
