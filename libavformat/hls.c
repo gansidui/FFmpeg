@@ -211,6 +211,9 @@ typedef struct HLSContext {
     AVDictionary *avio_opts;
     int strict_std_compliance;
     char *scheme_proxy;
+
+    int *variant_indexes;
+    int bitrate_index;
 } HLSContext;
 
 static int read_chomp_line(AVIOContext *s, char *buf, int maxlen)
@@ -359,6 +362,10 @@ static struct variant *new_variant(HLSContext *c, struct variant_info *info,
         strcpy(var->video_group, info->video);
         strcpy(var->subtitles_group, info->subtitles);
     }
+
+    int n = c->n_variants;
+    c->variant_indexes = av_realloc_array(c->variant_indexes, sizeof(int), n+1);
+    c->variant_indexes[n] = n;
 
     dynarray_add(&c->variants, &c->n_variants, var);
     dynarray_add(&var->playlists, &var->n_playlists, pls);
@@ -1278,6 +1285,33 @@ static int64_t default_reload_interval(struct playlist *pls)
                           pls->target_duration;
 }
 
+/*
+ * swap - swap value of @a and @b
+ */
+#define swap(a, b) \
+    do { __typeof__(a) __tmp = (a); (a) = (b); (b) = __tmp; } while (0)
+
+static void select_variants(HLSContext *c, int index)
+{
+    int i = 0;
+    for (; i < c->n_variants; i++) {
+        if (c->variant_indexes[i] == index)
+            break;
+    }
+    if (i == 0 || i == c->n_variants)
+        return;
+    if (c->variants[0]->n_playlists != c->variants[i]->n_playlists)
+        return;
+    for (int j = 0; j < c->variants[0]->n_playlists; ++j) {
+        if (c->variants[0]->playlists[j]->n_segments != c->variants[i]->playlists[j]->n_segments)
+            return;
+    }
+    for (int j = 0; j < c->variants[0]->n_playlists; ++j) {
+        swap(c->variants[0]->playlists[j]->segments, c->variants[i]->playlists[j]->segments);
+    }
+    swap(c->variant_indexes[0], c->variant_indexes[i]);
+}
+
 static int read_data(void *opaque, uint8_t *buf, int buf_size)
 {
     struct playlist *v = opaque;
@@ -1386,6 +1420,8 @@ reload:
     v->cur_seq_no++;
 
     c->cur_seq_no = v->cur_seq_no;
+
+    select_variants(c, c->bitrate_index);
 
     goto restart;
 }
@@ -1643,6 +1679,8 @@ static int hls_close(AVFormatContext *s)
     free_rendition_list(c);
 
     av_dict_free(&c->avio_opts);
+
+    av_freep(c->variant_indexes);
 
     return 0;
 }
@@ -2229,6 +2267,7 @@ static const AVOption hls_options[] = {
     {"live_start_index", "segment index to start live streams at (negative values are from the end)",
         OFFSET(live_start_index), AV_OPT_TYPE_INT, {.i64 = -3}, INT_MIN, INT_MAX, FLAGS},
     {"scheme_proxy", "scheme for load ts url", OFFSET(scheme_proxy), AV_OPT_TYPE_STRING},
+    {"bitrate_index", "actived bitrate index", OFFSET(bitrate_index), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX},
     {NULL}
 };
 
