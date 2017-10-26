@@ -77,6 +77,7 @@ struct segment {
     uint8_t iv[16];
     /* associated Media Initialization Section, treated as a segment */
     struct segment *init_section;
+    int64_t end_pos;
 };
 
 struct rendition;
@@ -1293,23 +1294,34 @@ static int64_t default_reload_interval(struct playlist *pls)
 
 static void select_variants(HLSContext *c, int index)
 {
-    int i = 0;
-    for (; i < c->n_variants; i++) {
-        if (c->variant_indexes[i] == index)
+    int vi = 0;
+    for (; vi < c->n_variants; vi++) {
+        if (c->variant_indexes[vi] == index)
             break;
     }
-    if (i == 0 || i == c->n_variants)
+    if (vi == 0 || vi == c->n_variants)
         return;
-    if (c->variants[0]->n_playlists != c->variants[i]->n_playlists)
+
+    // check segments equal count
+    if (c->variants[0]->n_playlists != c->variants[vi]->n_playlists)
         return;
     for (int j = 0; j < c->variants[0]->n_playlists; ++j) {
-        if (c->variants[0]->playlists[j]->n_segments != c->variants[i]->playlists[j]->n_segments)
+        if (c->variants[0]->playlists[j]->n_segments != c->variants[vi]->playlists[j]->n_segments)
             return;
     }
+
     for (int j = 0; j < c->variants[0]->n_playlists; ++j) {
-        swap(c->variants[0]->playlists[j]->segments, c->variants[i]->playlists[j]->segments);
+        swap(c->variants[0]->playlists[j]->segments, c->variants[vi]->playlists[j]->segments);
     }
-    swap(c->variant_indexes[0], c->variant_indexes[i]);
+    swap(c->variant_indexes[0], c->variant_indexes[vi]);
+
+    // clear end_pos
+    for (int i = 0; i < c->variants[0]->n_playlists; ++i) { 
+        for (int j = 0; j < c->variants[0]->playlists[i]->n_segments; ++j) {
+            c->variants[0]->playlists[i]->segments[j]->end_pos = 0;
+            c->variants[vi]->playlists[i]->segments[j]->end_pos = 0;
+        }
+    }
 }
 
 static int read_data(void *opaque, uint8_t *buf, int buf_size)
@@ -1417,6 +1429,8 @@ reload:
         return ret;
     }
     ff_format_io_close(v->parent, &v->input);
+    current_segment(v)->end_pos = v->pb.pos;
+
     v->cur_seq_no++;
 
     c->cur_seq_no = v->cur_seq_no;
@@ -1680,7 +1694,7 @@ static int hls_close(AVFormatContext *s)
 
     av_dict_free(&c->avio_opts);
 
-    av_freep(c->variant_indexes);
+    av_freep(&c->variant_indexes);
 
     return 0;
 }
@@ -2247,6 +2261,52 @@ static int hls_read_seek(AVFormatContext *s, int stream_index,
     return 0;
 }
 
+static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp, int64_t *bufpos)
+{
+    HLSContext *c = s->priv_data;
+    struct playlist *pls = NULL;
+    int i, seq_no;
+    char *end_buf;
+
+    *bufpos = 0;
+    if (c->bitrate_index == stream_index)
+        return 0;
+    c->bitrate_index = stream_index;
+
+    for (i = 0; i < c->n_playlists; i++) {
+        struct playlist *tmp = c->playlists[i];
+        if (tmp->needed) {
+            pls = tmp;
+            break;
+        }
+    }
+
+    if (!pls || !find_timestamp_in_playlist(c, pls, timestamp, &seq_no))
+        return -1;
+
+    if (pls->cur_seq_no <= seq_no)
+        return 0;
+
+    *bufpos = pls->segments[seq_no - pls->start_seq_no]->end_pos;
+
+    if (pls->input)
+        ff_format_io_close(pls->parent, &pls->input);
+    av_packet_unref(&pls->pkt);
+    reset_packet(&pls->pkt);
+
+    /* Clear any buffered data */
+    pls->pb.eof_reached = 0;
+    pls->pb.buf_end = pls->pb.buf_ptr = pls->pb.buffer;
+    pls->pb.pos = 0;
+
+    ff_read_frame_flush(pls->ctx);
+    pls->cur_seq_no = seq_no + 1;
+    select_variants(c, stream_index);
+
+    //printf("[sync]find current play segments %d, end %lld\n", seq_no, *bufpos);
+    return 0;
+}
+
 static int hls_probe(AVProbeData *p)
 {
     /* Require #EXTM3U at the start, and either one of the ones below
@@ -2289,4 +2349,5 @@ AVInputFormat ff_hls_demuxer = {
     .read_packet    = hls_read_packet,
     .read_close     = hls_close,
     .read_seek      = hls_read_seek,
+    .read_sync      = hls_read_sync,
 };

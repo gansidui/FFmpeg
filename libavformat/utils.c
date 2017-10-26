@@ -2539,6 +2539,14 @@ int avformat_flush(AVFormatContext *s)
     return 0;
 }
 
+int avformat_sync(AVFormatContext *s, int stream_index, int64_t timestamp, int64_t *bufpos)
+{
+    if (s->iformat->read_sync) {
+        return s->iformat->read_sync(s, stream_index, timestamp, bufpos);
+    }
+    return -1;
+}
+
 /*******************************************************/
 
 /**

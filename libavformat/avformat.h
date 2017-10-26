@@ -796,6 +796,11 @@ typedef struct AVInputFormat {
      * @see avdevice_capabilities_free() for more details.
      */
     int (*free_device_capabilities)(struct AVFormatContext *s, struct AVDeviceCapabilitiesQuery *caps);
+
+    /**
+     * Change to another stream
+     */
+    int (*read_sync)(struct AVFormatContext *, int stream, int64_t timestamp, int64_t *pos);
 } AVInputFormat;
 /**
  * @}
@@ -2392,6 +2397,15 @@ int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int
  * @return >=0 on success, error code otherwise
  */
 int avformat_flush(AVFormatContext *s);
+
+/**
+ * @prarm s
+ * @param stream_index
+ * @param timestamp current playing timestamp
+ * @param bufpos the latest discard AVPacket pos
+ * @return 0 on success
+ */
+int avformat_sync(AVFormatContext *s, int stream_index, int64_t timestamp, int64_t *bufpos);
 
 /**
  * Start playing a network-based stream (e.g. RTSP stream) at the
