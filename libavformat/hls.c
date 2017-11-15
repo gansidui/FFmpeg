@@ -1161,11 +1161,13 @@ static int open_input(HLSContext *c, struct playlist *pls, struct segment *seg)
                 if (ret != sizeof(pls->key)) {
                     av_log(NULL, AV_LOG_ERROR, "Unable to read key file %s\n",
                            seg->key);
+                    c->ctx->event_flags |= AVSTREAM_EVENT_FLAG_HLS_KEY_ERROR;                    
                 }
                 ff_format_io_close(pls->parent, &pb);
             } else {
                 av_log(NULL, AV_LOG_ERROR, "Unable to open key file %s\n",
                        seg->key);
+                c->ctx->event_flags |= AVSTREAM_EVENT_FLAG_HLS_KEY_ERROR;
             }
             av_strlcpy(pls->key_url, seg->key, sizeof(pls->key_url));
         }

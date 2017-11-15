@@ -1641,7 +1641,8 @@ typedef struct AVFormatContext {
      */
     int event_flags;
 #define AVFMT_EVENT_FLAG_METADATA_UPDATED 0x0001 ///< The call resulted in updated metadata.
-
+#define AVSTREAM_EVENT_FLAG_HLS_KEY_ERROR 0x0002 ///< The call resulted in fetch encrtypt hls key failed
+    
     /**
      * Maximum number of packets to read while waiting for the first timestamp.
      * Decoding only.
