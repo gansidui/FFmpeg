@@ -506,6 +506,17 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return 0;
 }
 
+static int s_avforamt_open_last_event_flags;
+
+void avforamt_open_set_last_event_flags(int flags)
+{
+    s_avforamt_open_last_event_flags = flags;
+}
+
+int avforamt_open_get_last_event_flags() 
+{
+    return s_avforamt_open_last_event_flags;
+}
 
 int avformat_open_input(AVFormatContext **ps, const char *filename,
                         AVInputFormat *fmt, AVDictionary **options)
@@ -648,6 +659,7 @@ int avformat_open_input(AVFormatContext **ps, const char *filename,
     return 0;
 
 fail:
+    avforamt_open_set_last_event_flags(s->event_flags);
     ff_id3v2_free_extra_meta(&id3v2_extra_meta);
     av_dict_free(&tmp);
     av_dict_free(&tmp2);
