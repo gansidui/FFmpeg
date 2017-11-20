@@ -2272,7 +2272,8 @@ static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp
 
     *bufpos = 0;
     if (c->bitrate_index == stream_index)
-        return 0;
+        return 1;
+
     c->bitrate_index = stream_index;
 
     for (i = 0; i < c->n_playlists; i++) {
@@ -2286,8 +2287,10 @@ static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp
     if (!pls || !find_timestamp_in_playlist(c, pls, timestamp, &seq_no))
         return -1;
 
-    if (pls->cur_seq_no <= seq_no)
-        return 0;
+    if (pls->cur_seq_no <= seq_no) {
+        // printf("[sync] current play segments equal %d", seq_no);
+        return 2;
+    }
 
     *bufpos = pls->segments[seq_no - pls->start_seq_no]->end_pos;
 
