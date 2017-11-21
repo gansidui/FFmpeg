@@ -215,6 +215,7 @@ typedef struct HLSContext {
 
     int *variant_indexes;
     int bitrate_index;
+    int select_variants_later;
 } HLSContext;
 
 static int read_chomp_line(AVIOContext *s, char *buf, int maxlen)
@@ -1297,30 +1298,38 @@ static int64_t default_reload_interval(struct playlist *pls)
 static void select_variants(HLSContext *c, int index)
 {
     int vi = 0;
+    int pi = 0;
+    for (int i = 0; i < c->n_playlists; i++) {
+        struct playlist *pls = c->playlists[i];
+        if (pls->cur_needed) {
+            pi = i;
+            break;
+        }
+    }
     for (; vi < c->n_variants; vi++) {
         if (c->variant_indexes[vi] == index)
             break;
     }
-    if (vi == 0 || vi == c->n_variants)
+    if (vi == pi || vi == c->n_variants)
         return;
 
     // check segments equal count
-    if (c->variants[0]->n_playlists != c->variants[vi]->n_playlists)
+    if (c->variants[pi]->n_playlists != c->variants[vi]->n_playlists)
         return;
-    for (int j = 0; j < c->variants[0]->n_playlists; ++j) {
-        if (c->variants[0]->playlists[j]->n_segments != c->variants[vi]->playlists[j]->n_segments)
+    for (int j = 0; j < c->variants[pi]->n_playlists; ++j) {
+        if (c->variants[pi]->playlists[j]->n_segments != c->variants[vi]->playlists[j]->n_segments)
             return;
     }
 
-    for (int j = 0; j < c->variants[0]->n_playlists; ++j) {
-        swap(c->variants[0]->playlists[j]->segments, c->variants[vi]->playlists[j]->segments);
+    for (int j = 0; j < c->variants[pi]->n_playlists; ++j) {
+        swap(c->variants[pi]->playlists[j]->segments, c->variants[vi]->playlists[j]->segments);
     }
-    swap(c->variant_indexes[0], c->variant_indexes[vi]);
+    swap(c->variant_indexes[pi], c->variant_indexes[vi]);
 
     // clear end_pos
-    for (int i = 0; i < c->variants[0]->n_playlists; ++i) { 
-        for (int j = 0; j < c->variants[0]->playlists[i]->n_segments; ++j) {
-            c->variants[0]->playlists[i]->segments[j]->end_pos = 0;
+    for (int i = 0; i < c->variants[pi]->n_playlists; ++i) { 
+        for (int j = 0; j < c->variants[pi]->playlists[i]->n_segments; ++j) {
+            c->variants[pi]->playlists[i]->segments[j]->end_pos = 0;
             c->variants[vi]->playlists[i]->segments[j]->end_pos = 0;
         }
     }
@@ -1437,7 +1446,10 @@ reload:
 
     c->cur_seq_no = v->cur_seq_no;
 
-    select_variants(c, c->bitrate_index);
+    if (c->select_variants_later) {
+       select_variants(c, c->bitrate_index);
+       c->select_variants_later = 0;
+    }
 
     goto restart;
 }
@@ -2284,11 +2296,14 @@ static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp
         }
     }
 
-    if (!pls || !find_timestamp_in_playlist(c, pls, timestamp, &seq_no))
+    if (!pls || !find_timestamp_in_playlist(c, pls, timestamp, &seq_no)) {
+        c->select_variants_later = 1;
         return -1;
+    }
 
     if (pls->cur_seq_no <= seq_no) {
         // printf("[sync] current play segments equal %d", seq_no);
+        c->select_variants_later = 1;
         return 2;
     }
 
@@ -2307,7 +2322,7 @@ static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp
     ff_read_frame_flush(pls->ctx);
     pls->cur_seq_no = seq_no + 1;
     select_variants(c, stream_index);
-
+    c->select_variants_later = 0;
     //printf("[sync]find current play segments %d, end %lld\n", seq_no, *bufpos);
     return 0;
 }
