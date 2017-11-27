@@ -226,14 +226,6 @@ static int read_chomp_line(AVIOContext *s, char *buf, int maxlen)
     return len;
 }
 
-static int read_chomp_line_and_append_m3u8(AVIOContext *s, char *buf, int maxlen, AVDictionary **pm) {
-    int ret = read_chomp_line(s, buf, maxlen);
-    char tbuf[MAX_URL_SIZE];
-    sprintf(tbuf, "%s\n", buf);
-    av_dict_set(pm, "m3u8", tbuf, AV_DICT_APPEND);
-    return ret;
-}
-
 static void free_segment_list(struct playlist *pls)
 {
     int i;
@@ -693,6 +685,7 @@ static int parse_playlist(HLSContext *c, const char *url,
     char tmp_str[MAX_URL_SIZE];
     struct segment *cur_init_section = NULL;
     int start_seq_no = -1;
+    char *m3u8_content = NULL;
 
     if (!in) {
 #if 1
@@ -722,11 +715,12 @@ static int parse_playlist(HLSContext *c, const char *url,
     if (av_opt_get(in, "location", AV_OPT_SEARCH_CHILDREN, &new_url) >= 0)
         url = new_url;
 
-    read_chomp_line_and_append_m3u8(in, line, sizeof(line), &c->ctx->metadata);
+    read_chomp_line(in, line, sizeof(line));
     if (strcmp(line, "#EXTM3U")) {
         ret = AVERROR_INVALIDDATA;
         goto fail;
     }
+    m3u8_content = strdup(line);
 
     if (pls) {
         free_segment_list(pls);
@@ -734,7 +728,10 @@ static int parse_playlist(HLSContext *c, const char *url,
         pls->type = PLS_TYPE_UNSPECIFIED;
     }
     while (!avio_feof(in)) {
-        read_chomp_line_and_append_m3u8(in, line, sizeof(line), &c->ctx->metadata);
+        read_chomp_line(in, line, sizeof(line));
+        int m3u8_size = strlen(m3u8_content)+strlen(line)+2;
+        m3u8_content = av_realloc(m3u8_content, m3u8_size);
+        av_strlcatf(m3u8_content, m3u8_size, "\n%s", line);
         if (av_strstart(line, "#EXT-X-STREAM-INF:", &ptr)) {
             is_variant = 1;
             memset(&variant_info, 0, sizeof(variant_info));
@@ -891,6 +888,12 @@ static int parse_playlist(HLSContext *c, const char *url,
         pls->last_load_time = av_gettime_relative();
 
 fail:
+    if (m3u8_content) {
+        char tkey[MAX_URL_SIZE];
+        sprintf(tkey, "m3u8:%s", url);
+        av_dict_set(&c->ctx->metadata, tkey, m3u8_content, 0);
+        free(m3u8_content);
+    }
     av_free(new_url);
     if (close_in)
         ff_format_io_close(c->ctx, &in);
