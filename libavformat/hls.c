@@ -1316,14 +1316,6 @@ static void select_variants(HLSContext *c, int index)
     if (vi == pi || vi == c->n_variants)
         return;
 
-    // check segments equal count
-    if (c->variants[pi]->n_playlists != c->variants[vi]->n_playlists)
-        return;
-    for (int j = 0; j < c->variants[pi]->n_playlists; ++j) {
-        if (c->variants[pi]->playlists[j]->n_segments != c->variants[vi]->playlists[j]->n_segments)
-            return;
-    }
-
     for (int j = 0; j < c->variants[pi]->n_playlists; ++j) {
         swap(c->variants[pi]->playlists[j]->segments, c->variants[vi]->playlists[j]->segments);
     }
@@ -1336,6 +1328,21 @@ static void select_variants(HLSContext *c, int index)
             c->variants[vi]->playlists[i]->segments[j]->end_pos = 0;
         }
     }
+}
+
+static int is_variants_alignment(HLSContext *c) {
+    // check segments equal count
+
+    for (int i = 1; i < c->n_playlists; i++) {
+        if (c->variants[0]->n_playlists != c->variants[i]->n_playlists)
+            return -1;
+        for (int j = 0; j < c->variants[i]->n_playlists; ++j) {
+            if (c->variants[0]->playlists[j]->n_segments != c->variants[i]->playlists[j]->n_segments)
+                return -1;
+        }
+    }
+
+    return 0;
 }
 
 static int read_data(void *opaque, uint8_t *buf, int buf_size)
@@ -2285,6 +2292,10 @@ static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp
     int i, seq_no;
     char *end_buf;
 
+    if (c == NULL || is_variants_alignment(c) != 0) {
+        return -1;
+    }
+
     *bufpos = 0;
     if (c->bitrate_index == stream_index)
         return 1;
@@ -2300,14 +2311,13 @@ static int hls_read_sync(AVFormatContext *s, int stream_index, int64_t timestamp
     }
 
     if (!pls || !find_timestamp_in_playlist(c, pls, timestamp, &seq_no)) {
-        c->select_variants_later = 1;
         return -1;
     }
 
     if (pls->cur_seq_no <= seq_no) {
         // printf("[sync] current play segments equal %d", seq_no);
         c->select_variants_later = 1;
-        return 2;
+        return 1;
     }
 
     *bufpos = pls->segments[seq_no - pls->start_seq_no]->end_pos;
