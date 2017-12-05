@@ -2028,7 +2028,7 @@ static int hls_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     HLSContext *c = s->priv_data;
     int ret, i, minplaylist = -1;
-    int64_t timestamp = AV_NOPTS_VALUE;//add
+    int64_t timestamp = AV_NOPTS_VALUE, pkt_ts;//add
 
     recheck_discard_flags(s, c->first_packet);
     c->first_packet = 0;
@@ -2073,7 +2073,8 @@ static int hls_read_packet(AVFormatContext *s, AVPacket *pkt)
 
                     tb = get_timebase(pls);
                     find_timestamp_in_seq_no(pls,&timestamp,FFMIN(pls->cur_seq_no, pls->n_segments));//add
-                    ts_diff = timestamp + av_rescale_rnd(pls->pkt.dts, AV_TIME_BASE,
+                    pkt_ts = pls->pkt.pts == AV_NOPTS_VALUE ? pls->pkt.dts : pls->pkt.pts;
+                    ts_diff = timestamp + av_rescale_rnd(pkt_ts, AV_TIME_BASE,
                                             tb.den, AV_ROUND_DOWN) -
                             pls->seek_timestamp;
                     if (ts_diff >= 0 && (pls->seek_flags  & AVSEEK_FLAG_ANY ||
