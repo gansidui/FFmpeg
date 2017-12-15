@@ -211,7 +211,6 @@ typedef struct HLSContext {
     char *http_proxy;                    ///< holds the address of the HTTP proxy server
     AVDictionary *avio_opts;
     int strict_std_compliance;
-    char *scheme_proxy;
 
     int *variant_indexes;
     int bitrate_index;
@@ -685,7 +684,6 @@ static int parse_playlist(HLSContext *c, const char *url,
     char tmp_str[MAX_URL_SIZE];
     struct segment *cur_init_section = NULL;
     int start_seq_no = -1;
-    char *m3u8_content = NULL;
 
     if (!in) {
 #if 1
@@ -699,6 +697,7 @@ static int parse_playlist(HLSContext *c, const char *url,
         av_dict_set(&opts, "cookies", c->cookies, 0);
         av_dict_set(&opts, "headers", c->headers, 0);
         av_dict_set(&opts, "http_proxy", c->http_proxy, 0);
+        av_dict_copy(&opts, c->avio_opts, 0);
 
         ret = c->ctx->io_open(c->ctx, &in, url, AVIO_FLAG_READ, &opts);
         av_dict_free(&opts);
@@ -720,7 +719,6 @@ static int parse_playlist(HLSContext *c, const char *url,
         ret = AVERROR_INVALIDDATA;
         goto fail;
     }
-    m3u8_content = strdup(line);
 
     if (pls) {
         free_segment_list(pls);
@@ -729,9 +727,6 @@ static int parse_playlist(HLSContext *c, const char *url,
     }
     while (!avio_feof(in)) {
         read_chomp_line(in, line, sizeof(line));
-        int m3u8_size = strlen(m3u8_content)+strlen(line)+2;
-        m3u8_content = av_realloc(m3u8_content, m3u8_size);
-        av_strlcatf(m3u8_content, m3u8_size, "\n%s", line);
         if (av_strstart(line, "#EXT-X-STREAM-INF:", &ptr)) {
             is_variant = 1;
             memset(&variant_info, 0, sizeof(variant_info));
@@ -800,8 +795,6 @@ static int parse_playlist(HLSContext *c, const char *url,
             ptr = strchr(ptr, '@');
             if (ptr)
                 seg_offset = strtoll(ptr+1, NULL, 10);
-        } else if (av_strstart(line, "#LOCATION:", &ptr)) {
-            url = strdup(ptr);
         } else if (av_strstart(line, "#", NULL)) {
             continue;
         } else if (line[0]) {
@@ -842,9 +835,6 @@ static int parse_playlist(HLSContext *c, const char *url,
 
                 if (key_type != KEY_NONE) {
                     ff_make_absolute_url(tmp_str, sizeof(tmp_str), url, key);
-                    if (c->scheme_proxy) {
-                        insert_scheme(tmp_str, c->scheme_proxy);
-                    }
                     seg->key = av_strdup(tmp_str);
                     if (!seg->key) {
                         av_free(seg);
@@ -856,9 +846,6 @@ static int parse_playlist(HLSContext *c, const char *url,
                 }
 
                 ff_make_absolute_url(tmp_str, sizeof(tmp_str), url, line);
-                if (c->scheme_proxy) {
-                    insert_scheme(&tmp_str, c->scheme_proxy);
-                }
                 seg->url = av_strdup(tmp_str);
                 if (!seg->url) {
                     av_free(seg->key);
@@ -888,12 +875,6 @@ static int parse_playlist(HLSContext *c, const char *url,
         pls->last_load_time = av_gettime_relative();
 
 fail:
-    if (m3u8_content) {
-        char tkey[MAX_URL_SIZE];
-        sprintf(tkey, "m3u8:%s", url);
-        av_dict_set(&c->ctx->metadata, tkey, m3u8_content, 0);
-        free(m3u8_content);
-    }
     av_free(new_url);
     if (close_in)
         ff_format_io_close(c->ctx, &in);
@@ -2360,7 +2341,6 @@ static int hls_probe(AVProbeData *p)
 static const AVOption hls_options[] = {
     {"live_start_index", "segment index to start live streams at (negative values are from the end)",
         OFFSET(live_start_index), AV_OPT_TYPE_INT, {.i64 = -3}, INT_MIN, INT_MAX, FLAGS},
-    {"scheme_proxy", "scheme for load ts url", OFFSET(scheme_proxy), AV_OPT_TYPE_STRING},
     {"bitrate_index", "actived bitrate index", OFFSET(bitrate_index), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX},
     {NULL}
 };
