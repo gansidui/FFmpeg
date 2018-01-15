@@ -684,6 +684,7 @@ static int parse_playlist(HLSContext *c, const char *url,
     char tmp_str[MAX_URL_SIZE];
     struct segment *cur_init_section = NULL;
     int start_seq_no = -1;
+    char scheme[128] = "";
 
     if (!in) {
 #if 1
@@ -713,6 +714,10 @@ static int parse_playlist(HLSContext *c, const char *url,
 
     if (av_opt_get(in, "location", AV_OPT_SEARCH_CHILDREN, &new_url) >= 0)
         url = new_url;
+
+    if (av_strstart(url, "ijkhlscache", &ptr) != 0) {
+        strncpy(scheme, url, ptr-url);
+    }
 
     read_chomp_line(in, line, sizeof(line));
     if (strcmp(line, "#EXTM3U")) {
@@ -747,6 +752,9 @@ static int parse_playlist(HLSContext *c, const char *url,
                 has_iv = 1;
             }
             av_strlcpy(key, info.uri, sizeof(key));
+            if (strlen(scheme) > 0) {
+                insert_scheme(key, scheme);
+            }
         } else if (av_strstart(line, "#EXT-X-MEDIA:", &ptr)) {
             struct rendition_info info = {{0}};
             ff_parse_key_value(ptr, (ff_parse_key_val_cb) handle_rendition_args,
