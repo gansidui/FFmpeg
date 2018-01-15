@@ -419,7 +419,7 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
 
         cur_ai = ai;
     } else {
-        av_log(NULL, AV_LOG_INFO, "Hit DNS cache hostname = %s\n", hostname);
+        av_log(NULL, AV_LOG_DEBUG, "Hit DNS cache hostname = %s\n", hostname);
         cur_ai = dns_entry->res;
     }
 
