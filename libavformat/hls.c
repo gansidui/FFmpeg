@@ -721,6 +721,9 @@ static int parse_playlist(HLSContext *c, const char *url,
         goto fail;
     }
     m3u8_content = strdup(line);
+    int m3u8_content_size = strlen(line);
+    int m3u8_buff_size = m3u8_content_size;
+    
 
     if (pls) {
         free_segment_list(pls);
@@ -729,9 +732,18 @@ static int parse_playlist(HLSContext *c, const char *url,
     }
     while (!avio_feof(in)) {
         read_chomp_line(in, line, sizeof(line));
-        int m3u8_size = strlen(m3u8_content)+strlen(line)+2;
-        m3u8_content = av_realloc(m3u8_content, m3u8_size);
-        av_strlcatf(m3u8_content, m3u8_size, "\n%s", line);
+        int new_line_size = strlen(line);
+        int new_m3u8_size = m3u8_content_size+new_line_size+2;
+        if (new_m3u8_size > m3u8_buff_size) {
+            m3u8_buff_size = new_m3u8_size * 2;
+            m3u8_content = av_realloc(m3u8_content, m3u8_buff_size);
+        }
+
+        memcpy(m3u8_content + m3u8_content_size, "\n", 1);
+        memcpy(m3u8_content + m3u8_content_size + 1, line, new_line_size);
+        m3u8_content_size += (1+new_line_size);
+
+
         if (av_strstart(line, "#EXT-X-STREAM-INF:", &ptr)) {
             is_variant = 1;
             memset(&variant_info, 0, sizeof(variant_info));
