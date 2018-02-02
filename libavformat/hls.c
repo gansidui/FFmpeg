@@ -739,8 +739,10 @@ static int parse_playlist(HLSContext *c, const char *url,
         }
 
         memcpy(m3u8_content + m3u8_content_size, "\n", 1);
-        memcpy(m3u8_content + m3u8_content_size + 1, line, new_line_size+1);
+        memcpy(m3u8_content + m3u8_content_size + 1, line, new_line_size);
         m3u8_content_size += (1+new_line_size);
+        *(m3u8_content + m3u8_content_size) = 0;
+
         if (av_strstart(line, "#EXT-X-STREAM-INF:", &ptr)) {
             is_variant = 1;
             memset(&variant_info, 0, sizeof(variant_info));
