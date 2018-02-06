@@ -1119,6 +1119,19 @@ static void intercept_id3(struct playlist *pls, uint8_t *buf,
         pls->is_id3_timestamped = (pls->id3_mpegts_timestamp != AV_NOPTS_VALUE);
 }
 
+static int is_key_error(uint8_t key[16]) {
+    char *err[] = {"retcode"};
+    for (int i = 0; i < sizeof(err)/sizeof(err[0]); i++) {
+        char *str = err[i];
+        int len = strlen(str);
+        for (int j = 0; j < 16-len; ++j) {
+            if (memcmp(str, key+j, len) == 0)
+                return 1;
+        }
+    }
+    return 0;
+}
+
 static int open_input(HLSContext *c, struct playlist *pls, struct segment *seg)
 {
     AVDictionary *opts = NULL;
@@ -1153,6 +1166,11 @@ static int open_input(HLSContext *c, struct playlist *pls, struct segment *seg)
                 ret = avio_read(pb, pls->key, sizeof(pls->key));
                 if (ret != sizeof(pls->key)) {
                     av_log(NULL, AV_LOG_ERROR, "Unable to read key file %s\n",
+                           seg->key);
+                    c->ctx->event_flags |= AVSTREAM_EVENT_FLAG_HLS_KEY_ERROR;                    
+                }
+                if (is_key_error(pls->key)) {
+                    av_log(NULL, AV_LOG_ERROR, "is_key_error %s",
                            seg->key);
                     c->ctx->event_flags |= AVSTREAM_EVENT_FLAG_HLS_KEY_ERROR;                    
                 }
