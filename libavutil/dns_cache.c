@@ -33,6 +33,16 @@ typedef struct DnsCacheContext {
     int initialized;
 } DnsCacheContext;
 
+typedef struct TCPAddrinfoRequest
+{
+    char            *hostname;
+    char            *servname;
+    struct addrinfo  hints;
+    struct addrinfo *res;
+
+    int dns_cache_timeout;
+} TCPAddrinfoRequest;
+
 static DnsCacheContext *context = NULL;
 static pthread_once_t key_once = PTHREAD_ONCE_INIT;
 
@@ -150,6 +160,41 @@ DnsCacheEntry *get_dns_cache_reference(char *hostname) {
     return dns_cache_entry;
 }
 
+DnsCacheEntry *get_dns_cache_reference_no_remove(char *hostname, int *expired) {
+    AVDictionaryEntry *elem = NULL;
+    DnsCacheEntry *dns_cache_entry = NULL;
+    int64_t cur_time = av_gettime_relative();
+
+    if (cur_time < 0 || !hostname || strlen(hostname) == 0) {
+        return NULL;
+    }
+
+    if (!context || !context->initialized) {
+#if HAVE_PTHREADS
+        pthread_once(&key_once, inner_init);
+#endif
+    }
+
+    if (context && context->initialized) {
+        pthread_mutex_lock(&context->dns_dictionary_mutex);
+        elem = av_dict_get(context->dns_dictionary, hostname, NULL, AV_DICT_MATCH_CASE);
+        if (elem) {
+            dns_cache_entry = (DnsCacheEntry *) (intptr_t) strtoll(elem->value, NULL, 10);
+            if (dns_cache_entry) {
+                if (dns_cache_entry->expired_time < cur_time) {
+                    if (expired) {
+                        *expired = 1;
+                    }
+                }
+                dns_cache_entry->ref_count++;
+            }
+        }
+        pthread_mutex_unlock(&context->dns_dictionary_mutex);
+    }
+
+    return dns_cache_entry;
+}
+
 int release_dns_cache_reference(char *hostname, DnsCacheEntry **p_entry) {
     DnsCacheEntry *entry = *p_entry;
 
@@ -225,5 +270,90 @@ int add_dns_cache_entry(char *hostname, struct addrinfo *cur_ai, int64_t timeout
     }
 
 fail:
+    return -1;
+}
+
+static void tcp_getaddrinfo_request_free(TCPAddrinfoRequest *req)
+{
+    if (req->res) {
+        freeaddrinfo(req->res);
+        req->res = NULL;
+    }
+
+    av_freep(&req->servname);
+    av_freep(&req->hostname);
+    av_freep(&req);
+}
+
+static void *tcp_getaddrinfo_worker(void *arg)
+{
+    TCPAddrinfoRequest *req = arg;
+
+    int ret = getaddrinfo(req->hostname, req->servname, &req->hints, &req->res);
+
+    if (ret == 0) {
+        av_log(NULL, AV_LOG_INFO, "dns cache update %s\n", req->hostname);
+        remove_dns_cache_entry(req->hostname);
+        add_dns_cache_entry(req->hostname, req->res, req->dns_cache_timeout);
+    } else {
+        av_log(NULL, AV_LOG_ERROR,
+                "Failed to resolve hostname %s: %s\n",
+                req->hostname, gai_strerror(ret));
+    }
+
+    tcp_getaddrinfo_request_free(req);
+
+    return NULL;
+}
+
+int update_dns_cache_nonblock(const char *hostname, const char *servname,
+                   const struct addrinfo *hints, int dns_cache_timeout)
+{
+    int     ret;
+    TCPAddrinfoRequest *req     = NULL;
+    pthread_t work_thread;
+
+    if (hostname && !hostname[0])
+        hostname = NULL;
+
+    req = (TCPAddrinfoRequest *) av_mallocz(sizeof(TCPAddrinfoRequest));
+    if (!req)
+        return AVERROR(ENOMEM);
+
+    if (hostname) {
+        req->hostname = av_strdup(hostname);
+        if (!req->hostname)
+            goto fail;
+    }
+
+    if (servname) {
+        req->servname = av_strdup(servname);
+        if (!req->hostname)
+            goto fail;
+    }
+
+    if (hints) {
+        req->hints.ai_family   = hints->ai_family;
+        req->hints.ai_socktype = hints->ai_socktype;
+        req->hints.ai_protocol = hints->ai_protocol;
+        req->hints.ai_flags    = hints->ai_flags;
+    }
+
+    req->dns_cache_timeout = dns_cache_timeout;
+
+
+    /* FIXME: using a thread pool would be better. */
+    ret = pthread_create(&work_thread, NULL, tcp_getaddrinfo_worker, req);
+
+    if (ret) {
+        ret = AVERROR(ret);
+        goto fail;
+    }
+
+    pthread_detach(work_thread);
+    return 0;
+
+fail:
+    tcp_getaddrinfo_request_free(req);
     return -1;
 }

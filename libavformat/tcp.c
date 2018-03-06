@@ -344,6 +344,7 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
     char hostname_bak[1024] = {0};
     AVAppTcpIOControl control = {0};
     DnsCacheEntry *dns_entry = NULL;
+    int expired = 0;
 
     if (s->open_timeout < 0) {
         s->open_timeout = 15000000;
@@ -394,7 +395,14 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
             av_log(NULL, AV_LOG_INFO, "will delete cache entry, hostname = %s\n", hostname);
             remove_dns_cache_entry(hostname);
         } else {
+#ifdef HAVE_PTHREADS
+            dns_entry = get_dns_cache_reference_no_remove(hostname, &expired);
+            if (expired) {
+                update_dns_cache_nonblock(hostname, portstr, &hints, s->dns_cache_timeout);
+            }
+#else
             dns_entry = get_dns_cache_reference(hostname);
+#endif
         }
     }
 

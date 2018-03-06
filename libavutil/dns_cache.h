@@ -34,5 +34,8 @@ DnsCacheEntry *get_dns_cache_reference(char *hostname);
 int release_dns_cache_reference(char *hostname, DnsCacheEntry **p_entry);
 int remove_dns_cache_entry(char *hostname);
 int add_dns_cache_entry(char *hostname, struct addrinfo *cur_ai, int64_t timeout);
+DnsCacheEntry *get_dns_cache_reference_no_remove(char *hostname, int *expired);
+int update_dns_cache_nonblock(const char *hostname, const char *service,
+                   const struct addrinfo *hints, int dns_cache_timeout);
 
 #endif /* AVUTIL_DNS_CACHE_H */
