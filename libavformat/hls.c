@@ -214,6 +214,7 @@ typedef struct HLSContext {
 
     int *variant_indexes;
     int bitrate_index;
+    int fast_open_bitrate_index;
     int select_variants_later;
 } HLSContext;
 
@@ -1781,6 +1782,8 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
     if (c->n_playlists > 1 || c->playlists[0]->n_segments == 0) {
         for (i = 0; i < c->n_playlists; i++) {
             struct playlist *pls = c->playlists[i];
+            if (c->fast_open_bitrate_index > 0 && c->fast_open_bitrate_index != i)
+                continue;
             if ((ret = parse_playlist(c, pls->url, pls, NULL)) < 0)
                 goto fail;
         }
@@ -1828,6 +1831,8 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
     for (i = 0; i < c->n_playlists; i++) {
         struct playlist *pls = c->playlists[i];
 
+        if (c->fast_open_bitrate_index > 0 && c->fast_open_bitrate_index != i)
+            continue;
         if (pls->n_segments == 0)
             continue;
 
@@ -1839,6 +1844,8 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
     for (i = 0; i < c->n_playlists; i++) {
         struct playlist *pls = c->playlists[i];
         AVInputFormat *in_fmt = NULL;
+        if (c->fast_open_bitrate_index > 0 && c->fast_open_bitrate_index != i)
+                continue;
 
         if (!(pls->ctx = avformat_alloc_context())) {
             ret = AVERROR(ENOMEM);
@@ -2368,6 +2375,7 @@ static const AVOption hls_options[] = {
     {"live_start_index", "segment index to start live streams at (negative values are from the end)",
         OFFSET(live_start_index), AV_OPT_TYPE_INT, {.i64 = -3}, INT_MIN, INT_MAX, FLAGS},
     {"bitrate_index", "actived bitrate index", OFFSET(bitrate_index), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX},
+    {"fast_open_bitrate_index", "actived bitrate index", OFFSET(fast_open_bitrate_index), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, INT_MAX},
     {NULL}
 };
 
