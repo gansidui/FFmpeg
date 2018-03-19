@@ -187,6 +187,9 @@ struct variant {
     char audio_group[MAX_FIELD_LEN];
     char video_group[MAX_FIELD_LEN];
     char subtitles_group[MAX_FIELD_LEN];
+
+    int width;
+    int height;
 };
 
 typedef struct HLSContext {
@@ -334,6 +337,7 @@ struct variant_info {
     char audio[MAX_FIELD_LEN];
     char video[MAX_FIELD_LEN];
     char subtitles[MAX_FIELD_LEN];
+    char resolution[20];
 };
 
 static struct variant *new_variant(HLSContext *c, struct variant_info *info,
@@ -355,6 +359,10 @@ static struct variant *new_variant(HLSContext *c, struct variant_info *info,
         strcpy(var->audio_group, info->audio);
         strcpy(var->video_group, info->video);
         strcpy(var->subtitles_group, info->subtitles);
+
+        if (info->resolution) {
+            sscanf(info->resolution, "%dx%d", &var->width, &var->height);
+        }
     }
 
     int n = c->n_variants;
@@ -381,6 +389,9 @@ static void handle_variant_args(struct variant_info *info, const char *key,
     } else if (!strncmp(key, "SUBTITLES=", key_len)) {
         *dest     =        info->subtitles;
         *dest_len = sizeof(info->subtitles);
+    } else if (!strncmp(key, "RESOLUTION=", key_len)) {
+        *dest     =        info->resolution;
+        *dest_len = sizeof(info->resolution);
     }
 }
 
@@ -1737,6 +1748,7 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
     HLSContext *c = s->priv_data;
     int ret = 0, i;
     int highest_cur_seq_no = 0;
+    int variants_test_index = 0;
 
     c->ctx                = s;
     c->interrupt_callback = &s->interrupt_callback;
@@ -1786,10 +1798,13 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
                 continue;
             if ((ret = parse_playlist(c, pls->url, pls, NULL)) < 0)
                 goto fail;
+            if (c->fast_open_bitrate_index == i) {
+                variants_test_index = i;
+            }
         }
     }
 
-    if (c->variants[0]->playlists[0]->n_segments == 0) {
+    if (c->variants[variants_test_index]->playlists[0]->n_segments == 0) {
         av_log(NULL, AV_LOG_WARNING, "Empty playlist\n");
         ret = AVERROR_EOF;
         goto fail;
@@ -1797,10 +1812,10 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
 
     /* If this isn't a live stream, calculate the total duration of the
      * stream. */
-    if (c->variants[0]->playlists[0]->finished) {
+    if (c->variants[variants_test_index]->playlists[0]->finished) {
         int64_t duration = 0;
-        for (i = 0; i < c->variants[0]->playlists[0]->n_segments; i++)
-            duration += c->variants[0]->playlists[0]->segments[i]->duration;
+        for (i = 0; i < c->variants[variants_test_index]->playlists[0]->n_segments; i++)
+            duration += c->variants[variants_test_index]->playlists[0]->segments[i]->duration;
         s->duration = duration;
     }
 
@@ -1825,6 +1840,8 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
         if (!program)
             goto fail;
         av_dict_set_int(&program->metadata, "variant_bitrate", v->bandwidth, 0);
+        av_dict_set_int(&program->metadata, "variant_width", v->height, 0);
+        av_dict_set_int(&program->metadata, "variant_height", v->width, 0);
     }
 
     /* Select the starting segments */
