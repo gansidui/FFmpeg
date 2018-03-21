@@ -1800,6 +1800,7 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
                 goto fail;
             if (c->fast_open_bitrate_index == i) {
                 variants_test_index = i;
+                c->bitrate_index = i;
             }
         }
     }
@@ -2246,7 +2247,7 @@ static int hls_read_seek(AVFormatContext *s, int stream_index,
     int64_t first_timestamp, seek_timestamp, duration;
 
     if ((flags & AVSEEK_FLAG_BYTE) ||
-        !(c->variants[0]->playlists[0]->finished || c->variants[0]->playlists[0]->type == PLS_TYPE_EVENT))
+        !(c->variants[c->bitrate_index]->playlists[0]->finished || c->variants[c->bitrate_index]->playlists[0]->type == PLS_TYPE_EVENT))
         return AVERROR(ENOSYS);
 
     first_timestamp = c->first_timestamp == AV_NOPTS_VALUE ?
@@ -2296,7 +2297,8 @@ static int hls_read_seek(AVFormatContext *s, int stream_index,
         /* Reset the pos, to let the mpegts demuxer know we've seeked. */
         pls->pb.pos = 0;
         /* Flush the packet queue of the subdemuxer. */
-        ff_read_frame_flush(pls->ctx);
+        if (pls->ctx)
+            ff_read_frame_flush(pls->ctx);
 
         pls->seek_timestamp = seek_timestamp;
         pls->seek_flags = flags;
