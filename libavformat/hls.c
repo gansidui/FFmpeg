@@ -1792,9 +1792,13 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
     /* If the playlist only contained playlists (Master Playlist),
      * parse each individual playlist. */
     if (c->n_playlists > 1 || c->playlists[0]->n_segments == 0) {
+        if (c->fast_open_bitrate_index >= c->n_playlists) {
+            c->fast_open_bitrate_index = 0;
+            av_log(NULL, AV_LOG_WARNING, "fast_open_bitrate_index overflow\n");
+        }
         for (i = 0; i < c->n_playlists; i++) {
             struct playlist *pls = c->playlists[i];
-            if (c->fast_open_bitrate_index > 0 && c->fast_open_bitrate_index != i)
+            if (c->fast_open_bitrate_index >= 0 && c->fast_open_bitrate_index != i)
                 continue;
             if ((ret = parse_playlist(c, pls->url, pls, NULL)) < 0)
                 goto fail;
