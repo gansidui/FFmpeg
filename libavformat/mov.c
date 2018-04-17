@@ -3177,7 +3177,7 @@ static void mov_fix_index(MOVContext *mov, AVStream *st)
             curr_cts = current->timestamp + msc->dts_shift;
 
             if (ctts_data_old && ctts_index_old < ctts_count_old) {
-                av_log(mov->fc, AV_LOG_DEBUG, "shifted frame pts, curr_cts: %"PRId64" @ %"PRId64", ctts: %d, ctts_count: %"PRId64"\n",
+                av_log(mov->fc, AV_LOG_TRACE, "shifted frame pts, curr_cts: %"PRId64" @ %"PRId64", ctts: %d, ctts_count: %"PRId64"\n",
                        curr_cts, ctts_index_old, ctts_data_old[ctts_index_old].duration, ctts_count_old);
                 curr_cts += ctts_data_old[ctts_index_old].duration;
                 ctts_sample_old++;
