@@ -389,6 +389,8 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
     if (s->listen)
         hints.ai_flags |= AI_PASSIVE;
 
+    av_application_on_dns_will_resolve(s->app_ctx, hostname);
+
     if (s->dns_cache_timeout > 0) {
         memcpy(hostname_bak, hostname, 1024);
         if (s->dns_cache_clear) {
@@ -422,6 +424,7 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
             av_log(h, AV_LOG_ERROR,
                 "Failed to resolve hostname %s: %s\n",
                 hostname, gai_strerror(ret));
+            av_application_on_dns_did_resolve(s->app_ctx, hostname, ret);
             return AVERROR(EIO);
         }
 
@@ -430,6 +433,8 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
         av_log(NULL, AV_LOG_DEBUG, "Hit DNS cache hostname = %s\n", hostname);
         cur_ai = dns_entry->res;
     }
+
+    av_application_on_dns_did_resolve(s->app_ctx, hostname, 0);
 
  restart:
 #if HAVE_STRUCT_SOCKADDR_IN6

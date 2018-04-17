@@ -188,6 +188,29 @@ int av_application_on_tcp_did_open(AVApplicationContext *h, int error, int fd, A
     return h->func_on_app_event(h, AVAPP_CTRL_DID_TCP_OPEN, (void *)control, sizeof(AVAppTcpIOControl));
 }
 
+int av_application_on_dns_will_resolve(AVApplicationContext *h, const char *url)
+{
+    if (h && h->func_on_app_event) {
+        AVAppDnsControl control = {0};
+        strncpy(control.url, url, sizeof(control.url) - 1);
+        control.url[sizeof(control.url) - 1] = '\0';
+        return h->func_on_app_event(h, AVAPP_CTRL_WILL_DNS_RESOLVE, (void *)&control, sizeof(AVAppDnsControl));
+    }
+    return 0;
+}
+
+int av_application_on_dns_did_resolve(AVApplicationContext *h, const char *url, int error)
+{
+    if (h && h->func_on_app_event) {
+        AVAppDnsControl control = {0};
+        strncpy(control.url, url, sizeof(control.url) - 1);
+        control.url[sizeof(control.url) - 1] = '\0';
+        control.error = error;
+        return h->func_on_app_event(h, AVAPP_CTRL_DID_DNS_RESOLVE, (void *)&control, sizeof(AVAppDnsControl));
+    }
+    return 0;
+}
+
 void av_application_on_async_statistic(AVApplicationContext *h, AVAppAsyncStatistic *statistic)
 {
     if (h && h->func_on_app_event)

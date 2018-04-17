@@ -40,6 +40,10 @@
 
 #define AVAPP_CTRL_WILL_CONCAT_SEGMENT_OPEN 0x20007 //AVAppIOControl
 
+#define AVAPP_CTRL_WILL_DNS_RESOLVE   0x20021 //AVAppDnsControl
+#define AVAPP_CTRL_DID_DNS_RESOLVE    0x20022 //AVAppDnsControl
+
+
 typedef struct AVAppIOControl {
     size_t  size;
     char    url[4096];      /* in, out */
@@ -87,6 +91,12 @@ typedef struct AVAppIOTraffic
     int     bytes;
 } AVAppIOTraffic;
 
+typedef struct AVAppDnsControl
+{
+    char     url[4096];
+    int      error;
+} AVAppDnsControl;
+
 typedef struct AVApplicationContext AVApplicationContext;
 struct AVApplicationContext {
     const AVClass *av_class;    /**< information for av_log(). Set by av_application_open(). */
@@ -112,6 +122,9 @@ int  av_application_on_io_control(AVApplicationContext *h, int event_type, AVApp
 
 int av_application_on_tcp_will_open(AVApplicationContext *h);
 int av_application_on_tcp_did_open(AVApplicationContext *h, int error, int fd, AVAppTcpIOControl *control);
+
+int av_application_on_dns_will_resolve(AVApplicationContext *h, const char *url);
+int av_application_on_dns_did_resolve(AVApplicationContext *h, const char *url, int error);
 
 void av_application_on_async_statistic(AVApplicationContext *h, AVAppAsyncStatistic *statistic);
 void av_application_on_async_read_speed(AVApplicationContext *h, AVAppAsyncReadSpeed *speed);
