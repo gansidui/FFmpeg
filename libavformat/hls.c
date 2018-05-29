@@ -1174,6 +1174,7 @@ static int open_input(HLSContext *c, struct playlist *pls, struct segment *seg)
         char iv[33], key[33], url[MAX_URL_SIZE];
         if (strcmp(seg->key, pls->key_url)) {
             AVIOContext *pb;
+            int64_t start_time = av_gettime();
             if (open_url(pls->parent, &pb, seg->key, c->avio_opts, opts, NULL) == 0) {
                 ret = avio_read(pb, pls->key, sizeof(pls->key));
                 if (ret != sizeof(pls->key)) {
@@ -1193,6 +1194,7 @@ static int open_input(HLSContext *c, struct playlist *pls, struct segment *seg)
                 c->ctx->event_flags |= AVSTREAM_EVENT_FLAG_HLS_KEY_ERROR;
             }
             av_strlcpy(pls->key_url, seg->key, sizeof(pls->key_url));
+            av_log(NULL, AV_LOG_INFO, "HLS get key time %d ms", (int)(av_gettime()-start_time)/1000);
         }
         ff_data_to_hex(iv, seg->iv, sizeof(seg->iv), 0);
         ff_data_to_hex(key, pls->key, sizeof(pls->key), 0);
