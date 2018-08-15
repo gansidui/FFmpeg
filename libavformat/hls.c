@@ -1809,6 +1809,8 @@ static int hls_read_header(AVFormatContext *s, AVDictionary **options)
                 c->bitrate_index = i;
             }
         }
+    } else {
+        c->bitrate_index = c->fast_open_bitrate_index = 0;
     }
 
     if (c->variants[variants_test_index]->playlists[0]->n_segments == 0) {
