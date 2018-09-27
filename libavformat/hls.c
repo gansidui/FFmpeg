@@ -667,6 +667,13 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
         void *u = (s->flags & AVFMT_FLAG_CUSTOM_IO) ? NULL : s->pb;
         update_options(&c->cookies, "cookies", u);
         av_dict_set(&opts, "cookies", c->cookies, 0);
+        if (s->pb && s->pb->error == AVERROR(EIO)) {
+            s->pb->error = 0;
+        }
+    } else {
+        if (s->pb && ret == AVERROR(EIO)) {
+            s->pb->error = ret;
+        }
     }
 
     av_dict_free(&tmp);
@@ -2083,6 +2090,9 @@ static int hls_read_packet(AVFormatContext *s, AVPacket *pkt)
                 AVRational tb;
                 ret = av_read_frame(pls->ctx, &pls->pkt);
                 if (ret < 0) {
+                    if (s->pb && ret == AVERROR(EIO)) {
+                        s->pb->error = ret;
+                    }
                     if (!avio_feof(&pls->pb) && ret != AVERROR_EOF)
                         return ret;
                     reset_packet(&pls->pkt);
