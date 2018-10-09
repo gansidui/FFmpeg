@@ -31,7 +31,9 @@
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/thread.h"
-
+#ifdef QCLOUDSSL
+#include <openssl/boringssl_prefix.pch>
+#endif
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
