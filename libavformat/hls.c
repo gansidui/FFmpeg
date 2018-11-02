@@ -1379,6 +1379,8 @@ static int read_data(void *opaque, uint8_t *buf, int buf_size)
     HLSContext *c = v->parent->priv_data;
     int ret, i;
     int just_opened = 0;
+    int open_error_cnt = 0;
+#define MAX_RETRY_CNT 3
 
 restart:
     if (!v->needed)
@@ -1447,12 +1449,22 @@ reload:
         if (ret)
             return ret;
 
+reopen:
         ret = open_input(c, v, seg);
         if (ret < 0) {
             if (ff_check_interrupt(c->interrupt_callback))
                 return AVERROR_EXIT;
-            av_log(v->parent, AV_LOG_WARNING, "Failed to open segment of playlist %d\n",
-                   v->index);
+            av_log(v->parent, AV_LOG_WARNING, "Failed to open segment of playlist %d, seq\n",
+                v->index, v->cur_seq_no);
+            if (open_error_cnt++ < MAX_RETRY_CNT) {
+                av_usleep(open_error_cnt * open_error_cnt * 100 * 1000);
+                av_log(v->parent, AV_LOG_WARNING, "try %d time open segment of playlist %d, seq %d\n",
+                    open_error_cnt, v->index, v->cur_seq_no);
+                goto reopen;
+            } else {
+                av_log(v->parent, AV_LOG_ERROR, "skip open segment of playlist %d, seq %d\n",
+                    v->index, v->cur_seq_no);
+            }
             v->cur_seq_no += 1;
             goto reload;
         }
